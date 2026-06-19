@@ -18,6 +18,7 @@
 ## Table of Contents
 
 - [Context](#context)
+- [System Showcase](#system-showcase)
 - [Security Architecture](#security-architecture)
   - [Authentication Flow](#authentication-flow)
   - [Authorization — RBAC via JWT Custom Claims](#authorization--rbac-via-jwt-custom-claims)
@@ -44,6 +45,28 @@ The drivers had it worse. They operate across rural highways where cell signal d
 I built this application to solve those problems, and I deliberately framed it as a security engineering exercise. I'm transitioning into cybersecurity, and I wanted a project where security decisions weren't abstract — they had to work for real people, on real infrastructure, with real constraints.
 
 Every design choice in this system — from how authentication works to why I wrote custom sync logic instead of relying on Firestore's built-in cache — came from an actual operational need, not a tutorial.
+
+---
+
+## System Showcase
+
+Here is a visual overview of the administrative panel and customer-facing interface:
+
+### 🌐 Customer Portal (Landing Page)
+The customer-facing portal designed to present company services and facilitate business communication:
+![Açucena Landing Page](assets/landing_page.png)
+
+### 📊 Real-Time Administrative Dashboard (Masked Financials)
+Provides Nelson (the owner) and managers with dynamic metrics, truck performance charts, recent activity streams, and an on-demand financial privacy mode:
+![Açucena Fleet Dashboard](assets/dashboard.png)
+
+### 🔑 User Account Management
+Provides centralized user administration with real-time status indicators, custom roles, and provisional password flags:
+![User Accounts Management](assets/users_management.png)
+
+### 🚚 Intelligent Trip Dispatch
+Allows scheduling and dispatching delivery orders directly to the drivers' app, specifying custom volume and commission logic:
+![Trip Dispatch Modal](assets/dispatch_modal.png)
 
 ---
 
@@ -88,6 +111,9 @@ The PIN is stored in the **Android Keystore** via `flutter_secure_storage` with 
 
 I intentionally chose not to add server-side rate limiting for the PIN because the PIN never goes to the server. The rate limiting lives where the credential lives — on the device.
 
+#### 🔑 Provisional Password Flow (Force Password Reset)
+Admins can set temporary passwords for users/drivers, forcing a redirect to a dedicated change password screen on their first login. This ensures credentials remain private and secure from the start.
+
 ### Authorization — RBAC via JWT Custom Claims
 
 Roles are injected into the Firebase Auth JWT via a **Cloud Function** (`setUserRole`). Not stored in a Firestore document that the client queries — baked into the token itself.
@@ -112,6 +138,10 @@ Cloud Function (admin-only callable)
 **Why Custom Claims instead of a `roles` collection?**
 
 A document lookup adds latency and an extra Firestore read on every rule evaluation. Custom Claims are already present in the JWT that accompanies every request — zero overhead, zero additional reads. The tradeoff is that role changes require a token refresh, but in this system roles change maybe once a year, so that's a non-issue.
+
+#### 🛡️ Granular Permissions Matrix (V2)
+In the latest version, we upgraded authorization from coarse-grained roles (`admin` or `secretary`) to a **Granular Permissions Matrix** (similar to Google Workspace).
+Admins can select precise read (`view`), create (`create`), and edit/delete (`edit`) privileges for each system module (Dashboard, Trips, Dispatch, Clients, Fleet, Expenses, Payments, Accounts). This matrix is synchronized in real-time with both the Web Admin Panel and the Flutter mobile apps.
 
 ### Server-Side Validation (Firestore Security Rules)
 
@@ -250,6 +280,7 @@ Firestore has an offline persistence mode. I evaluated it and chose not to rely 
 - **Receipt-style confirmation screen** before saving — shows all entered data in a summary card
 - **Instant local persistence** — the record exists in SQLite the moment the user confirms, sync happens asynchronously
 - **Haptic feedback** on successful save — the driver knows it worked without reading the screen
+- **Operational Volume Decoupling**: Nelson can select any truck and manually overwrite the water volume delivered and price charged, allowing for custom billing and reporting without being constrained by the physical truck capacity.
 
 ### Client Management
 - Client database with search and quick-add from within the trip wizard (no need to navigate away)
@@ -271,6 +302,9 @@ Firestore has an offline persistence mode. I evaluated it and chose not to rely 
 - One-tap generation from any filtered view
 - Report includes: KPI summary, driver table, truck table, full trip list
 - Share via WhatsApp or print — the business owner prints a copy every month for his physical binder
+
+### UX & Visibility
+- **Financial Visual Privacy (Modo Ocultar Saldos)**: An interactive visual privacy toggle (eye icon) allows Nelson to instantly mask all financial values (`••••`) across the dashboard, tables, and charts at the UI/state level, preventing accidental data exposure in public spaces.
 
 ---
 
@@ -440,6 +474,28 @@ Cada decisão de design nesse sistema — desde como a autenticação funciona a
 
 ---
 
+## Demonstração Visual
+
+Aqui está uma visão geral do painel administrativo e do portal institucional:
+
+### 🌐 Portal Institucional (Landing Page)
+O portal voltado para os clientes, apresentando os serviços e facilitando a comunicação comercial:
+![Açucena Landing Page](assets/landing_page.png)
+
+### 📊 Painel Geral (Dashboard - Modo Ocultar Saldos)
+Fornece métricas em tempo real, gráficos de desempenho por veículo, feed de atividades recentes e o modo de privacidade financeira:
+![Açucena Fleet Dashboard](assets/dashboard.png)
+
+### 🔑 Gestão de Contas de Usuários
+Permite o gerenciamento centralizado de acessos, indicando o status das contas, perfis e controle de senhas provisórias:
+![User Accounts Management](assets/users_management.png)
+
+### 🚚 Despacho Inteligente de Viagens
+Permite o envio e agendamento de ordens de entrega diretamente para o celular do motorista, ajustando o volume e comissões:
+![Trip Dispatch Modal](assets/dispatch_modal.png)
+
+---
+
 ## Arquitetura de Segurança
 
 ### Autenticação
@@ -449,9 +505,13 @@ Cada decisão de design nesse sistema — desde como a autenticação funciona a
 - O PIN **nunca** sai do dispositivo — é um mecanismo de unlock local, armazenado com criptografia de hardware
 - **Proteção contra brute-force:** 3 tentativas erradas → cooldown de 30s → após 10 falhas totais, sessão é apagada e o usuário precisa autenticar do zero
 
+### Fluxo de Senha Provisória
+Ao criar ou resetar uma conta, o administrador define uma senha temporária. O sistema intercepta o primeiro acesso do usuário/motorista, obrigando-o a definir uma senha pessoal definitiva na tela de alteração forçada antes de liberar o acesso às funcionalidades.
+
 ### Autorização — RBAC via Custom Claims no JWT
 
 - Roles (`admin` | `secretary`) são injetadas no JWT via Cloud Function — não ficam num documento Firestore que o cliente consulta
+- **Matriz de Permissões Granular (V2)**: A versão V2 expandiu o modelo de autorização para uma matriz de controle de acesso fina (estilo Google Workspace). O administrador pode delegar permissões de visualização (`view`), criação (`create`) e edição (`edit`) por módulo de sistema (Dashboard, Viagens, Despacho, Clientes, Frota, Despesas, Pagamentos e Contas), sincronizada instantaneamente via Firestore Rules no painel web e aplicativos móveis.
 - **Client-side:** GoRouter impede navegação para rotas restritas (secretária não acessa dashboard financeiro)
 - **Server-side:** Firestore Security Rules verificam `request.auth.token.role` em toda operação — não dá pra burlar chamando a API REST diretamente
 
@@ -474,10 +534,11 @@ Cada registro de viagem carrega: `created_at` (timestamp do servidor, imutável)
 ## Funcionalidades
 
 - **Gestão de Frota:** Cadastro de caminhões e motoristas, atribuição flexível por viagem, soft-delete
-- **Registro de Viagens:** Wizard de 4 etapas com confirmação tipo recibo — motorista → caminhão → cliente → valor
+- **Registro de Viagens:** Wizard de 4 etapas com confirmação tipo recibo — motorista → caminhão → cliente → valor. Nelson pode selecionar qualquer caminhão e sobrescrever manualmente o volume de água entregue e o preço cobrado, permitindo faturamento flexível e relatórios precisos sem limitações físicas de capacidade.
 - **Controle de Despesas:** Combustível, manutenção, salários e outros, com breakdown mensal
 - **Painel Financeiro:** KPIs (faturamento, viagens, média por viagem, % combustível, pendentes, lucro líquido), gráficos interativos, filtros por período
 - **Relatório PDF:** Exportação com um toque, formato tabular que o dono já conhece do Excel, compartilhamento via WhatsApp
+- **Modo Ocultar Saldos (Privacidade Visual)**: Incluímos um botão de privacidade ("olhinho") no cabeçalho. Ao ser clicado, mascara todos os dados e valores financeiros em tempo real com `••••` no nível de renderização do React (inclusive eixos de gráficos), impedindo vazamento de dados confidenciais perto de clientes ou em locais públicos.
 - **Funciona Offline:** SQLite local como fonte de verdade, fila de sync persistente com backoff exponencial, sync em background via WorkManager
 
 ## Stack
